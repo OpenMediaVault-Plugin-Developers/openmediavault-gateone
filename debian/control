@@ -1,0 +1,15 @@
+Source: openmediavault-gateone
+Section: misc
+Priority: optional
+Maintainer: OpenMediaVault Plugin Developers <plugins@omv-extras.org>
+Build-Depends: debhelper (>= 9.0.0 )
+Standards-Version: 3.9.3
+
+Package: openmediavault-gateone
+Architecture: all
+Depends: ${misc:Depends}, openmediavault (>= 1.0.31), git, python-setuptools
+Description: OpenMediaVault plugin for Gate One
+ Gate One™ is a web-based Terminal Emulator and SSH client that brings the
+ power of the command line to the web. It requires no browser plugins and is
+ built on top of a powerful plugin system that allows every aspect of its
+ appearance and functionality to be customized.

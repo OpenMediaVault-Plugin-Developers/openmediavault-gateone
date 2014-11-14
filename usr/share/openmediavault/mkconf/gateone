@@ -1,0 +1,184 @@
+#!/bin/sh
+#
+# @license   http://www.gnu.org/licenses/gpl.html GPL Version 3
+# @author    Volker Theile <volker.theile@openmediavault.org>
+# @copyright Copyright (c) 2009-2013 Volker Theile
+# @copyright Copyright (c) 2014 OpenMediaVault Plugin Developers
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+set -e
+
+. /etc/default/openmediavault
+. /usr/share/openmediavault/scripts/helper-functions
+
+SERVICE="gateone"
+XPATH="//services/${SERVICE}"
+
+GATEONE_CONFIG_DIR="/etc/gateone/conf.d/"
+GATEONE_CONFIG_SERVER="${GATEONE_CONFIG_DIR}10server.conf"
+GATEONE_CONFIG_AUTH="${GATEONE_CONFIG_DIR}20authentication.conf"
+GATEONE_CONFIG_TERM="${GATEONE_CONFIG_DIR}50terminal.conf"
+#GATEONE_NGINX="/etc/nginx/openmediavault-webgui.d/openmediavault-gateone.conf"
+
+PORT=8777
+
+install()
+{
+    echo "Installing Gate One ..."
+
+    gitdir="/root/gateone"
+    mkdir -p ${gitdir}
+    cd ${gitdir}
+    if [ -d "${gitdir}/GateOne" ]; then
+        cd ${gitdir}/GateOne
+        git pull
+    else
+        git clone https://github.com/liftoff/GateOne.git
+    fi
+    cd ${gitdir}/GateOne
+    ./setup.py install
+
+    rm -rf /etc/gateone
+
+    invoke-rc.d --force ${SERVICE} stop
+    update-rc.d ${SERVICE} disable
+}
+
+config()
+{
+    origins=$(omv_config_get "${XPATH}/origins")
+    secret=$(</dev/urandom tr -dc "A-Za-z0-9" | head -c45)
+
+    mkdir -p ${GATEONE_CONFIG_DIR}
+
+    # Create server config file
+    cat <<EOF > ${GATEONE_CONFIG_SERVER}
+// This is Gate One's main settings file.
+{
+    // "gateone" server-wide settings fall under "*"
+    "*": {
+        "gateone": { // These settings apply to all of Gate One
+            "address": "",
+            "ca_certs": null,
+            "cache_dir": "/tmp/gateone_cache",
+            "certificate": "/etc/gateone/ssl/certificate.pem",
+            "cookie_secret": "${secret}",
+            "debug": false,
+            "disable_ssl": false,
+            "embedded": false,
+            "enable_unix_socket": false,
+            "gid": "0",
+            "https_redirect": false,
+            "js_init": "",
+            "keyfile": "/etc/gateone/ssl/keyfile.pem",
+            "locale": "en_US",
+            "log_file_max_size": 100000000,
+            "log_file_num_backups": 10,
+            "log_file_prefix": "/var/log/gateone/gateone.log",
+            "log_to_stderr": null,
+            "logging": "info",
+            "multiprocessing_workers": null,
+            "origins": [${origins}],
+            "pid_file": "/var/run/gateone.pid",
+            "port": ${PORT},
+            "session_dir": "/tmp/gateone",
+            "session_timeout": "5d",
+            "syslog_facility": "daemon",
+            "uid": "0",
+            "unix_socket_path": "/tmp/gateone.sock",
+            "url_prefix": "/gateone/",
+            "user_dir": "/var/lib/gateone/users",
+            "user_logs_max_age": "30d"
+        }
+    }
+}
+EOF
+
+    # Create auth config file
+    cat <<EOF > ${GATEONE_CONFIG_AUTH}
+// This is Gate One's authentication settings file.
+{
+    // "gateone" server-wide settings fall under "*"
+    "*": {
+        "gateone": { // These settings apply to all of Gate One
+            "api_timestamp_window": "30s",
+            "auth": "none",
+            "pam_realm": "openmediavault",
+            "pam_service": "login",
+            "ssl_auth": "none",
+            "sso_keytab": null,
+            "sso_realm": null,
+            "sso_service": "HTTP"
+        }
+    }
+}
+EOF
+
+    # Create terminal config file
+    cat <<EOF > ${GATEONE_CONFIG_TERM}
+// This is Gate One's Terminal application settings file.
+{
+    // "*" means "apply to all users" or "default"
+    "*": {
+        "terminal": { // These settings apply to the "terminal" application
+            "commands": {"SSH": {"command": "/usr/local/lib/python2.7/dist-packages/gateone-1.2.0-py2.7.egg/gateone/applications/terminal/plugins/ssh/scripts/ssh_connect.py -S '%SESSION_DIR%/%SESSION%/%SHORT_SOCKET%' --sshfp -a '-oUserKnownHostsFile=\\\\\\"%USERDIR%/%USER%/.ssh/known_hosts\\\\\\"'", "description": "Connect to hosts via SSH."}},
+            "default_command": "SSH",
+            "dtach": true,
+            "enabled_filetypes": "all",
+            "environment_vars": {"TERM": "xterm-256color"},
+            "session_logging": true,
+            "syslog_session_logging": false
+        }
+    }
+}
+EOF
+
+#cat <<EOF > "${GATEONE_NGINX}"
+#location /gateone/ {
+#    proxy_pass_header Server;
+#    proxy_set_header Host \$http_host;
+#    proxy_redirect off;
+#    proxy_set_header X-Real-IP \$remote_addr;
+#    proxy_set_header X-Scheme \$scheme;
+#    proxy_pass http://localhost:${PORT};
+#    proxy_http_version 1.1;
+#    proxy_set_header Upgrade \$http_upgrade;
+#    proxy_set_header Connection "upgrade";
+#}
+#EOF
+
+}
+
+case $2 in
+    install)
+        if [ "$(omv_config_get "${XPATH}/enable")" != "1" ]; then
+            install
+        fi
+    ;;
+
+    *)
+    ;;
+esac
+
+if [ "$(omv_config_get "${XPATH}/enable")" != "0" ]; then
+    config
+    update-rc.d ${SERVICE} defaults
+    invoke-rc.d ${SERVICE} start
+    service nginx reload
+else
+    service ${SERVICE} killterms
+fi
+
+exit 0
