@@ -52,8 +52,8 @@ install()
 
     rm -rf /etc/gateone
 
-    invoke-rc.d --force ${SERVICE} stop
-    update-rc.d ${SERVICE} disable
+    insserv ${SERVICE}
+    update-rc.d ${SERVICE} defaults
 }
 
 config()
@@ -174,11 +174,12 @@ esac
 
 if [ "$(omv_config_get "${XPATH}/enable")" != "0" ]; then
     config
-    update-rc.d ${SERVICE} defaults
     invoke-rc.d ${SERVICE} start
     service nginx reload
 else
-    service ${SERVICE} killterms
+    invoke-rc.d --force ${SERVICE} stop || :
+    update-rc.d ${SERVICE} disable || :
+    service ${SERVICE} killterms || :
 fi
 
 exit 0
