@@ -1,3 +1,9 @@
+openmediavault-gateone (1.1) testing; urgency=low
+
+  * Fix web client button
+
+ -- OpenMediaVault Plugin Developers <plugins@omv-extras.org>  Fri, 20 Mar 2015 06:53:37 -0500
+
 openmediavault-gateone (1.0) testing; urgency=low
 
   * Initial release
